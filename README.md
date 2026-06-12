@@ -1,4 +1,4 @@
-# Gorky 17 / Odium gfx3d Exporter
+# Gorky 17 / Odium 3dgfx Exporter
 
 This folder contains `gorky17_3dgfx_exporter.py`, a Python 3 script for converting
 Gorky 17 / Odium character and object assets into files that are easier to use
