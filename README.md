@@ -4,6 +4,9 @@ This folder contains `gorky17_3dgfx_exporter.py`, a Python 3 script for converti
 Gorky 17 / Odium character and object assets into files that are easier to use
 in modern art tools.
 
+**You'll need another tool to extract the .3df, .ani, .bfr, and .msh files from
+the game's .dat archives.**
+
 The script is aimed at extracting models, textures, poses, and baked animations.
 Animated exports are baked as shape-key / morph-target animation, which is usually
 easy to import into Blender and similar tools.
