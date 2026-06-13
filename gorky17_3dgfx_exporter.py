@@ -879,29 +879,75 @@ def unique_part_textures(mesh):
     return textures
 
 
-def resolve_msh_texture_path(msh_dir, texture):
-    texture=str(texture).strip()
-    windows_ref=PureWindowsPath(texture)
-    posix_ref=PurePosixPath(texture)
+def resolve_msh_relative_path(msh_dir, reference, label):
+    reference=str(reference).strip()
+    windows_ref=PureWindowsPath(reference)
+    posix_ref=PurePosixPath(reference)
     if windows_ref.anchor or posix_ref.anchor:
         raise ValueError(
-            f"MSH texture reference {texture!r} must be relative to the MSH directory; "
+            f"{label} {reference!r} must be relative to the MSH directory; "
             "absolute paths are not allowed."
         )
     if '..' in windows_ref.parts or '..' in posix_ref.parts:
         raise ValueError(
-            f"MSH texture reference {texture!r} cannot contain parent directory components."
+            f"{label} {reference!r} cannot contain parent directory components."
         )
 
     base=Path(msh_dir).resolve()
-    candidate=(Path(msh_dir)/texture).resolve()
+    candidate=(Path(msh_dir)/reference).resolve()
     try:
         candidate.relative_to(base)
     except ValueError:
         raise ValueError(
-            f"MSH texture reference {texture!r} resolves outside the MSH directory: {candidate}"
+            f"{label} {reference!r} resolves outside the MSH directory: {candidate}"
         ) from None
     return candidate
+
+
+def resolve_msh_texture_path(msh_dir, texture):
+    return resolve_msh_relative_path(msh_dir, texture, "MSH texture reference")
+
+
+def embedded_msh_references_with_extension(mesh, extension):
+    extension=extension.lower()
+    refs=[]
+    seen=set()
+    for item in mesh.get('strings', []):
+        text=str(item.get('text', '')).strip()
+        if text.lower().endswith(extension) and text not in seen:
+            refs.append(text)
+            seen.add(text)
+    return refs
+
+
+def apply_auto_inputs(args):
+    if not args.auto:
+        return None
+
+    if not args.msh:
+        args.msh=args.auto
+
+    mesh=parse_msh(args.msh)
+    msh_path=Path(args.msh)
+    msh_dir=msh_path.parent
+
+    if not args.ani:
+        for ani_ref in embedded_msh_references_with_extension(mesh, '.ani'):
+            ani_path=resolve_msh_relative_path(msh_dir, ani_ref, "MSH ANI reference")
+            if ani_path.exists():
+                args.ani=str(ani_path)
+                break
+        if not args.ani:
+            ani_path=msh_path.with_suffix('.ani')
+            if ani_path.exists():
+                args.ani=str(ani_path.resolve())
+
+    if not args.bfr:
+        bfr_path=msh_path.with_suffix('.bfr')
+        if bfr_path.exists():
+            args.bfr=str(bfr_path.resolve())
+
+    return mesh
 
 
 def resolve_export_materials(mesh, msh_path, cli_texture, texture_order, names):
@@ -1781,7 +1827,8 @@ def make_baked_gltf(
 
 def main():
     ap=argparse.ArgumentParser(allow_abbrev=False)
-    ap.add_argument('--msh', required=True, help='MSH mesh file')
+    ap.add_argument('--msh', help='MSH mesh file')
+    ap.add_argument('--auto', metavar='MSH', help='auto-discover missing --msh, --bfr, and --ani inputs from an MSH file; embedded MSH texture references are used unless --3df overrides them')
     ap.add_argument('--bfr')
     ap.add_argument('--ani')
     ap.add_argument('--3df', dest='texture', metavar='3DF', help='3DF texture file; supports p8 and yiq')
@@ -1808,9 +1855,12 @@ def main():
     args.fps=validate_baked_fps(args.fps)
     args.every=validate_frame_step(args.every)
     args.timeline_gap_frames=validate_timeline_gap_frames(args.timeline_gap_frames)
+    auto_mesh=apply_auto_inputs(args)
+    if not args.msh:
+        ap.error("one of --msh or --auto is required")
 
     names=derive_export_names(args.msh, args.texture, args.name)
-    mesh=parse_msh(args.msh)
+    mesh=auto_mesh if auto_mesh is not None else parse_msh(args.msh)
     bfr=parse_bfr(args.bfr) if args.bfr else None
     ani=parse_ani(args.ani) if args.ani else None
     selected_clips=select_clips(ani, args.clip, args.all_clips)
