@@ -1,279 +1,299 @@
-# Gorky 17 / Odium 3dgfx Exporter
+# Gorky 17 / Odium DAT Extractor and 3D Exporter
 
-`gorky17_3dgfx_exporter.py` is a Python 3 command-line exporter for Gorky 17 /
-Odium `3dgfx` assets. It converts the original game mesh, animation, clip, and
-texture files into formats that are easier to inspect or import into modern art
-tools.
+This project has two small Python tools for working with files from Gorky 17 /
+Odium:
 
-You need another tool to extract the `.3df`, `.ani`, `.bfr`, and `.msh` files
-from the game's `.dat` archives before using this exporter.
+- `gorky17_dat_extractor.py` opens the game's `.dat` archive files and extracts
+  the files inside them.
+- `gorky17_3dgfx_exporter.py` converts extracted 3D model files into formats
+  that are easier to open in tools such as Blender.
 
-The exporter can write static OBJ files, posed OBJ files, OBJ frame sequences,
-converted PNG textures, and baked animated GLB/GLTF files. Animated GLB/GLTF
-exports use morph targets / shape keys, not a reconstructed bone rig.
+The usual workflow is:
 
-## Requirements
+1. Extract the game `.dat` files.
+2. Pick a model file, usually a `.msh` file.
+3. Export it as `.glb` or `.obj`.
+4. Open the result in Blender or another 3D program.
 
-Install Python 3 and these packages:
+## What You Need
+
+Install Python 3 first. Then install the two Python packages.
 
 ```powershell
 python -m pip install numpy Pillow
 ```
 
-## Input Files
+## Step 1: Extract The Game DAT Files
 
-| File | Contents | When it is needed |
-| --- | --- | --- |
-| `.msh` | Mesh vertices, UVs, triangles, parts, skin ranges, bone weights, and sometimes texture/ANI references. | Always. |
-| `.3df` | Game texture. Supports `p8` palette textures and `yiq` / NCC textures. | Optional if the MSH has resolvable relative texture references, or if untextured output is acceptable. |
-| `.bfr` | Animation pose data: per-frame 4x3 bone transforms plus bounding boxes. | Required for `--frame`, OBJ animation sequences, and baked GLB/GLTF. |
-| `.ani` | Animation clip table: names, frame ranges, speeds, and sound events. | Required for `--clip`, `--all-clips`, and baked animations. |
+If Gorky 17 is installed through Steam in the normal location, the game archive
+folder is usually:
 
-`--3df` is an explicit texture override. If it is provided, that texture is used
-for every MSH part. If it is not provided, the exporter uses texture references
-stored in the MSH and resolves them relative to the MSH file. If the mesh has no
-texture references, the export is untextured.
-
-## Quick Start
-
-If the `.msh`, `.bfr`, `.ani`, and referenced `.3df` files are laid out the way
-the MSH references expect, start with `--auto`:
-
-```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_walk --clip walk --bake-glb
+```text
+<STEAM>\steamapps\common\Gorky 17\dat
 ```
 
-`--auto` sets `--msh`, looks for a same-stem `.bfr`, and finds an `.ani` either
-from MSH references or from a same-stem `.ani`. It does not need `--3df` when the
-MSH texture references are valid.
-
-If you want to override the texture manually:
+To extract all `.dat` files from that folder and its subfolders:
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --msh .\grandma.msh --bfr .\grandma.bfr --ani .\grandma.ani --3df .\babcia.3df --out .\exports\grandma_walk --clip walk --bake-glb
+python -B .\gorky17_dat_extractor.py --input-dir "<STEAM>\steamapps\common\Gorky 17\dat" --recursive --out .\out\gorky17_dat
 ```
 
-## Common Workflows
+The extracted files will be placed under:
 
-### Static OBJ
+```text
+out\gorky17_dat
+```
 
-Use this for the mesh in its original pose:
+The extractor keeps the game's folder layout so files with the same archive
+name do not overwrite each other. For example:
+
+```text
+01_port\other.dat      -> out\gorky17_dat\01_port\other
+common\other.dat       -> out\gorky17_dat\common\other
+common\sprite.dat      -> out\gorky17_dat\common\sprite
+```
+
+To only see what is inside the archives, without extracting anything:
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_static --static
+python -B .\gorky17_dat_extractor.py --input-dir "<STEAM>\steamapps\common\Gorky 17\dat" --recursive --list
+```
+
+To do a test run that shows what would be extracted:
+
+```powershell
+python -B .\gorky17_dat_extractor.py --input-dir "<STEAM>\steamapps\common\Gorky 17\dat" --recursive --dry-run
+```
+
+## Step 2: Find A 3D Model
+
+After extraction, search inside `out\gorky17_dat` for `.msh` files. A `.msh`
+file is the main 3D model file.
+
+In File Explorer, you can search for:
+
+```text
+*.msh
+```
+
+You can also list some models in PowerShell:
+
+```powershell
+Get-ChildItem .\out\gorky17_dat -Recurse -Filter *.msh | Select-Object -First 20 FullName
+```
+
+For many models, the matching `.bfr` and `.ani` files sit next to the `.msh`
+file and have the same name. The exporter can usually find them automatically.
+
+## Step 3: Export A Model
+
+The recommended way to export is with `--auto`. Give it a `.msh` file and it
+will try to find the matching `.bfr`, `.ani`, and texture files.
+
+Example:
+
+```powershell
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt --all-clips --bake-glb --split-clip-glbs
+```
+
+This creates Blender-friendly `.glb` files under:
+
+```text
+out\exports\cpt
+```
+
+If you only want a still model, use:
+
+```powershell
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt_static --static
+```
+
+If you want one named animation clip:
+
+```powershell
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt_walk --clip walk --bake-glb
+```
+
+If you do not know the clip names, try a made-up name. The exporter will stop
+and print the real clip names:
+
+```powershell
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\clip_probe --clip not_a_real_clip --bake-glb
+```
+
+## Opening The Result In Blender
+
+For `.glb/.gltf` files:
+
+1. Open Blender.
+2. Choose `File > Import > glTF 2.0`.
+3. Select the exported `.glb` file.
+4. Look for the imported animation and shape keys.
+
+For `.obj` files:
+
+1. Keep the `.obj`, `.mtl`, and `.png` files together in the same folder.
+2. Choose `File > Import > Wavefront (.obj)`.
+3. Select the exported `.obj` file.
+
+## Common Export Examples
+
+### Export Every Animation As Separate GLB Files
+
+This is usually the easiest result to use in Blender:
+
+```powershell
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt --all-clips --bake-glb --split-clip-glbs
 ```
 
 Typical output:
 
-- `grandma_static.obj`
-- `grandma.mtl`
-- one or more `.png` textures, if textures were resolved
+- `cpt_all_anims_baked.glb`
+- `per_clip_baked\cpt_CLIPNAME_baked.glb` files
 - `summary.json`
 
-### One Posed OBJ Frame
-
-Frame numbers are zero-based BFR frame indices:
+### Export All Animations Into One GLB
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_frame_10 --frame 10
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt_all --all-clips --bake-glb
+```
+
+### Export One Still OBJ
+
+```powershell
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt_static --static
 ```
 
 Typical output:
 
-- `grandma_frame_010.obj`
-- `grandma.mtl`
-- one or more `.png` textures, if textures were resolved
+- `cpt_static.obj`
+- `cpt.mtl`
+- one or more `.png` texture files, if textures were found
 - `summary.json`
 
-### One Animated GLB Clip
+### Export One Posed OBJ Frame
 
-Use this for a single animation that imports into Blender as shape keys:
-
-```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_walk --clip walk --bake-glb
-```
-
-Typical output:
-
-- `grandma_walk_baked.glb`
-- `summary.json`
-
-The texture is embedded in the GLB when one is available. A separate PNG/MTL is
-not written in bake-only mode unless you also request OBJ output.
-
-If you do not know the clip names, run with a temporary name. The exporter will
-stop and list the available clips:
+Frame numbers start at `0`:
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\clip_probe --clip not_a_real_clip --bake-glb
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt_frame_10 --frame 10
 ```
 
-### All Clips In One GLB
+### Export OBJ Files For An Animation
 
-This writes one GLB with one glTF animation per ANI clip:
+OBJ files cannot store animation in one file, so this writes one OBJ per frame:
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_all --all-clips --bake-glb
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt_obj_frames --clip walk
 ```
 
-Typical output:
-
-- `grandma_all_anims_baked.glb`
-- `summary.json`
-
-### One GLB Per Clip
-
-For Blender, separate files are often easier to work with:
+To write fewer frames and make the output smaller:
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_split --all-clips --bake-glb --split-clip-glbs
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --out .\out\exports\cpt_obj_frames_light --clip walk --every 2
 ```
 
-Typical output:
+### Override The Texture
 
-- `grandma_all_anims_baked.glb`
-- `per_clip_baked\grandma_CLIP_baked.glb` files
-- `summary.json`
-
-`--split-clip-glbs` only creates split files when more than one clip is selected.
-
-### Combined Timeline GLB
-
-This places selected clips one after another in a single animation track:
+Usually `--auto` is enough. If the texture is missing or you want to force a
+specific `.3df` texture, add `--3df`. Replace `PATH_TO_TEXTURE.3df` with the
+texture file you want to use:
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_timeline --all-clips --bake-glb --combined-timeline
+python -B .\gorky17_3dgfx_exporter.py --auto .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --3df PATH_TO_TEXTURE.3df --out .\out\exports\cpt_textured --all-clips --bake-glb
 ```
 
-Add held-pose gaps between clips with:
+### Old Manual Input Style
+
+The old style still works if you want to give every file yourself:
 
 ```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_timeline_gap --all-clips --bake-glb --combined-timeline --timeline-gap-frames 5
+python -B .\gorky17_3dgfx_exporter.py --msh .\out\gorky17_dat\common\other\gfx_3d\cpt.msh --bfr .\out\gorky17_dat\common\other\gfx_3d\cpt.bfr --ani .\out\gorky17_dat\common\other\gfx_3d\cpt.ani --3df PATH_TO_TEXTURE.3df --out .\out\exports\cpt_manual --clip walk --bake-glb
 ```
 
-### OBJ Animation Sequence
+## File Types In Plain Language
 
-OBJ cannot store animation in one file, so this writes one OBJ per sampled frame:
+| File type | What it is |
+| --- | --- |
+| `.dat` | A game archive. Think of it as a zip file. |
+| `.msh` | A 3D model shape. This is the file you normally give to `--auto`. |
+| `.bfr` | Movement data used for animated poses. |
+| `.ani` | Animation names and frame ranges, such as walk or attack. |
+| `.3df` | A game texture file. The exporter can turn it into PNG. |
+| `.glb/.gltf` | A modern 3D file that Blender can import. Best choice for animated exports. |
+| `.obj` | A simple 3D model file. Good for still models or frame-by-frame output. |
+| `summary.json` | A small report written by the exporter. Useful when checking what happened. |
 
-```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_obj_frames --clip walk
-```
-
-Use `--every` to skip frames:
-
-```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_obj_frames_light --clip walk --every 2
-```
-
-### GLB And OBJ Frames Together
-
-By default, `--bake-glb` or `--bake-gltf` writes only the baked animated file and
-`summary.json`. Add `--obj-sequence` to also write OBJ frames:
-
-```powershell
-python -B .\gorky17_3dgfx_exporter.py --auto .\grandma.msh --out .\exports\grandma_both --clip walk --bake-glb --obj-sequence
-```
-
-## Options
+## DAT Extractor Options
 
 | Option | Meaning |
 | --- | --- |
-| `--msh FILE` | Mesh file. Required unless `--auto` is used. |
-| `--auto MSH` | Use the MSH and auto-discover missing same-stem or embedded inputs. |
-| `--bfr FILE` | Animation pose file. Required for posed frames and animation exports. |
-| `--ani FILE` | Animation clip file. Required for clip exports. |
-| `--3df FILE` | Texture override for all parts. Supports `p8` and `yiq` / NCC 3DF files. |
-| `--texture-order xrgb` | Palette byte order for `p8` textures. Choices: `xrgb`, `xbgr`, `bgr`, `rgb`. |
+| `archives` | Optional archive paths. If omitted, the script searches `--input-dir`. |
+| `--input-dir FOLDER`, `--in FOLDER` | Folder to search for `.dat` files. Defaults to `in`. |
+| `--recursive` | Also search subfolders. Use this for the full game `dat` folder. |
+| `--out FOLDER` | Where extracted files are written. Defaults to `out`. |
+| `--no-archive-dir` | Extract directly into `--out`. Only allowed with one archive. |
+| `--list` | Show archive contents without extracting. |
+| `--dry-run` | Show what would be extracted without writing files. |
+| `--overwrite` | Replace existing extracted files. |
+| `--encoding TEXT` | Filename text encoding. Default is `cp1250`. |
+| `--no-times` | Do not copy the original archive timestamps to extracted files. |
+
+## 3D Exporter Options
+
+| Option | Meaning |
+| --- | --- |
+| `--auto MSH` | Recommended. Use this with a `.msh` file and let the exporter find the related files. |
+| `--msh FILE` | Manual model input. Needed only when not using `--auto`. |
+| `--bfr FILE` | Manual movement data input. Needed for posed or animated exports. |
+| `--ani FILE` | Manual animation list input. Needed for clip exports. |
+| `--3df FILE` | Optional texture override for all model parts. |
+| `--texture-order xrgb` | Palette byte order for `p8` textures. Try `xbgr` if colors look swapped. |
 | `--out FOLDER` | Output folder. Defaults to `out`. |
-| `--name NAME` | Override output basenames. |
+| `--name NAME` | Override output file names. |
 | `--no-summary` | Do not write `summary.json`. |
-| `--static` | Write a static OBJ. |
-| `--frame NUMBER` | Write one posed OBJ at a zero-based BFR frame index. |
-| `--clip NAME` | Export one named ANI clip. Case-insensitive. |
-| `--all-clips`, `--all-anims` | Export or bake every ANI clip. |
-| `--every NUMBER` | Sample every Nth frame for OBJ sequences and baked targets. Defaults to `1`. |
-| `--bake-glb` | Write animated binary GLB with baked morph-target animation. |
-| `--bake-gltf` | Write animated embedded text GLTF for inspection/debugging. |
-| `--fps NUMBER` | Playback FPS for baked animation timing. Defaults to `15`. ANI speed values are ignored for timing. |
-| `--obj-sequence` | Also write OBJ frame sequences when baking. |
-| `--include-all-bfr-targets` | Include every BFR frame as a morph target, not only selected clip frames. |
-| `--combined-timeline` | Create one sequential timeline animation instead of separate animations. |
+| `--static` | Write one still OBJ file. |
+| `--frame NUMBER` | Write one posed OBJ at a frame number. Frame numbers start at `0`. |
+| `--clip NAME` | Export one named animation clip. |
+| `--all-clips`, `--all-anims` | Export every animation clip in the `.ani` file. |
+| `--every NUMBER` | Use every Nth frame. Larger numbers make smaller files. |
+| `--bake-glb` | Write an animated `.glb` file. This is the usual Blender choice. |
+| `--bake-gltf` | Write an animated text `.gltf` file. Mostly useful for inspection. |
+| `--fps NUMBER` | Playback speed for baked animation timing. Default is `15`. |
+| `--obj-sequence` | Also write OBJ frame sequences when baking animation. |
+| `--include-all-bfr-targets` | Advanced. Include every BFR frame as a morph target. |
+| `--combined-timeline` | Put selected clips one after another in one animation track. |
 | `--timeline-gap-frames NUMBER` | Add held frames between clips in combined timeline mode. |
-| `--split-clip-glbs` | Also write one baked GLB/GLTF per clip when multiple clips are selected. |
-| `--glb-flip-v` | Flip GLB/GLTF V coordinates if a viewer displays textures upside down. |
+| `--split-clip-glbs` | Also write one GLB/GLTF per clip when exporting multiple clips. |
+| `--glb-flip-v` | Flip texture coordinates for GLB/GLTF if textures appear upside down. |
 
-## Baked Animation Details
+## Notes About Animated GLB Files
 
-The exporter does not reconstruct a skeleton hierarchy. It skins vertices using
-the BFR transforms and stores sampled poses as morph target deltas.
+The exporter does not rebuild the game's original editable bone rig. Instead, it
+saves animation as shape keys, also called morph targets. This is normal for
+this tool.
 
-- ANI `start_frame` and `end_frame` values are used directly as zero-based BFR
-  frame indices.
-- The base mesh/rest pose is the first sampled BFR frame, not the original bind
-  mesh.
-- Morph-weight animation uses `STEP` interpolation.
-- `--fps` controls playback timing. ANI speed values are parsed and preserved in
-  metadata but are not used for baked timing.
-- Long clips can produce large GLB/GLTF files because every sampled pose stores a
-  full POSITION morph target.
-
-Use `--every 2` or `--every 3` to reduce target count and file size when exact
-per-frame playback is not required.
-
-## Texture Notes
-
-OBJ exports write UVs with V flipped for the OBJ import path. GLB/GLTF exports
-keep V unflipped by default because that is the expected path for Blender with
-the generated PNG. Use `--glb-flip-v` only if your viewer needs it.
-
-If colors look red/blue swapped, try:
-
-```powershell
---texture-order xbgr
-```
-
-The default palette order is `xrgb`, matching the known Gorky 17 palette layout:
-unused/alpha byte, red, green, blue.
-
-## Summary File
-
-Unless `--no-summary` is passed, the exporter writes `summary.json`. It records
-input paths, mesh counts, parts, material assignments, texture metadata, selected
-clips, and baked animation semantics.
-
-The summary is useful for checking:
-
-- whether the expected textures were resolved
-- how many vertices, triangles, parts, and weight records were parsed
-- which clips were selected
-- which frames became morph targets
-- which timing convention was used
-
-## Importing Into Blender
-
-For GLB:
-
-1. Choose `File > Import > glTF 2.0`.
-2. Select the exported `.glb`.
-3. Look for shape keys / morph targets and the imported animation action.
-
-For OBJ:
-
-1. Keep the `.obj`, `.mtl`, and any `.png` textures together.
-2. Choose `File > Import > Wavefront (.obj)`.
-3. Select the exported `.obj`.
+- The first exported frame becomes the base pose.
+- Animation timing is controlled by `--fps`.
+- Large animations can create large `.glb` files.
+- Use `--every 2` or `--every 3` to make smaller files if exact frame-by-frame
+  playback is not important.
 
 ## Troubleshooting
 
-### The texture is missing
+### The extractor finds no files
 
-If you did not pass `--3df`, the exporter relies on texture references embedded
-in the MSH. Make sure the referenced `.3df` files resolve under the MSH
-directory, or pass `--3df TEXTURE.3df` to override all parts.
+Check that the path after `--input-dir` points to the game's `dat` folder. If
+you are extracting the full game folder, include `--recursive`.
+
+### The exported model has no texture
+
+The exporter normally uses texture names stored inside the `.msh` file. If that
+does not work, pass a texture manually with `--3df`.
 
 ### The texture is upside down in GLB
 
-Try:
+Try adding:
 
 ```powershell
 --glb-flip-v
@@ -281,7 +301,7 @@ Try:
 
 ### The colors look swapped
 
-Try:
+Try adding:
 
 ```powershell
 --texture-order xbgr
@@ -289,16 +309,9 @@ Try:
 
 ### Blender shows many shape keys
 
-That is expected. Animation is baked as morph targets / shape keys, not as an
-editable bone rig.
-
-### A clip frame range is outside the BFR
-
-Use matching `.msh`, `.bfr`, and `.ani` files from the same actor or object. The
-exporter validates selected ANI clip ranges against the BFR and aborts instead
-of clipping or skipping invalid frames.
+That is expected. The animation is stored as shape keys / morph targets, not as
+an editable bone rig.
 
 ### The output GLB is too large
 
-Use a larger `--every` value, export fewer clips, or use `--split-clip-glbs` so
-each file only contains one clip's sampled targets.
+Use fewer clips, use `--split-clip-glbs`, or add `--every 2` or `--every 3`.
